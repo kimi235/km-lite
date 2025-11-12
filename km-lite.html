@@ -177,9 +177,17 @@ var HDP_DICT={
   D:['development','infrastructure','education','school','clinic','health system','primary care','livelihoods','capacity building','policy','programme','investment','training','supply chain','renewable','solar','water supply','monitoring','m&e'],
   P:['peace','cohesion','conflict','mediation','grievance','inclusive','social contract','community committee','youth','women participation','accountability','complaints','do no harm']
 };
-function hdpScore(text){
+
+function hdpFlags(text){
   var T=(text||'').toLowerCase();
-  function hit(arr){var s=0; for(var i=0;i<arr.length;i++){ if(T.indexOf(arr[i])>=0) s++; } return s;}
+  function hit(arr){return arr.some(w=>T.includes(w));}
+  var H=hit(HDP_DICT.H);
+  var D=hit(HDP_DICT.D);
+  var P=hit(HDP_DICT.P);
+  var nexus=(H && D) || (H && D && P);
+  return {H:H?'H':'',D:D?'D':'',P:P?'P':'',nexus:nexus?'Y':'N'};
+}
+ return s;}
   var H=hit(HDP_DICT.H), D=hit(HDP_DICT.D), P=hit(HDP_DICT.P);
   if(H+D+P===0) return {H:0,D:100,P:0,label:'D 100%'};
   var sum=H+D+P; H=Math.round(H/sum*100); D=Math.round(D/sum*100); P=100-H-D;
@@ -313,7 +321,7 @@ async function rwFetch(){
   var daySpan=Number(document.getElementById('rw-days').value||365);
   var limit=Math.min(Number(document.getElementById('rw-limit').value||300),1000);
 
-  var url='https://api.reliefweb.int/v1/reports?appname=km-lite';
+  var url='https://api.reliefweb.int/v1/reports?appname=HyunKim+recap_km_lite+a5Ttg7U8km-lite';
   var sinceISO=new Date(Date.now()-daySpan*86400000).toISOString().slice(0,10);
   var names=pickedISO3.length? RECAP_MAP.filter(function(d){return pickedISO3.indexOf(d.iso3)>=0;}).map(function(d){return d.name;}) : RECAP_NAMES;
   var iso3 =pickedISO3.length? pickedISO3 : RECAP_ISO3;
@@ -434,5 +442,46 @@ document.addEventListener('DOMContentLoaded', function(){
   document.getElementById('notes-q').addEventListener('input', function(e){ renderNotes(e.target.value); });
 });
 </script>
+
+<!-- Dashboard Section -->
+<section id="dashboard" style="margin-top:20px;">
+  <h2>📊 HDP & C1–C15 Dashboard</h2>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:300px;">
+      <canvas id="hdpChart"></canvas>
+    </div>
+    <div style="flex:1;min-width:300px;">
+      <canvas id="c15Chart"></canvas>
+    </div>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+function renderDashboard(data){
+  if(!data.length) return;
+  const h=data.filter(d=>d.hdp.H==='H').length;
+  const d=data.filter(d=>d.hdp.D==='D').length;
+  const p=data.filter(d=>d.hdp.P==='P').length;
+  const n=data.filter(d=>d.hdp.nexus==='Y').length;
+
+  const hdpCtx=document.getElementById('hdpChart').getContext('2d');
+  new Chart(hdpCtx,{type:'doughnut',
+    data:{labels:['H','D','P','Nexus(Y)'],datasets:[{data:[h,d,p,n]}]},
+    options:{plugins:{legend:{position:'bottom'}}}
+  });
+
+  const cStats={};
+  data.forEach(d=>(d.c15||[]).forEach(c=>cStats[c]=(cStats[c]||0)+1));
+  const labels=Object.keys(cStats);
+  const values=Object.values(cStats);
+  const c15Ctx=document.getElementById('c15Chart').getContext('2d');
+  new Chart(c15Ctx,{type:'bar',
+    data:{labels,datasets:[{data:values}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false}}}
+  });
+}
+</script>
+
 </body>
 </html>
