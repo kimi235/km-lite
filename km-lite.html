@@ -326,30 +326,36 @@ async function rwFetch(){
   var st=document.getElementById('rw-status');
   if(st) st.textContent='요청 중...';
 
-  // 날짜: YYYY-MM-DD 형식
-  var sinceISO=new Date(Date.now()-daySpan*86400000).toISOString().slice(0,10);
+// 날짜: YYYY-MM-DD 형식
+var sinceISO = new Date(Date.now() - daySpan * 86400000).toISOString().slice(0, 10);
 
-  var url='https://api.reliefweb.int/v1/reports?appname='+encodeURIComponent(APPNAME);
+var url = 'https://api.reliefweb.int/v1/reports?appname=' + encodeURIComponent(APPNAME);
 
-  var fields={include:['id','title','url','body','body-html','country','source','theme','disaster_type','date.created']};
-  var sort=["date.created:desc"];
+var fields = {
+  include: ['id','title','url','body','body-html','country','source','theme','disaster_type','date.created']
+};
+var sort = ['date.created:desc'];
 
-  var conditions=[
-    {field:'date.created',
-     operator: "gte",
-     value: sinceISO
-    }
-  ];
-  if(countries.length){
-    conditions.push({field:'country',value:countries});
+// ---- 여기부터 conditions 블럭 전체 교체 ----
+var conditions = [
+  {
+    field: 'date.created',
+    operator: 'gte',
+    value: sinceISO
   }
+];
 
-  var body={
-    limit:limit,
-    offset:0,
-    filter:{operator:'AND',conditions:conditions},
-    fields:fields,
-    sort:sort
+if (countries.length) {
+  conditions.push({ field: 'country', value: countries });
+}
+// ---- 여기까지 ----
+
+var body = {
+  limit: limit,
+  offset: 0,
+  filter: { operator: 'AND', conditions: conditions },
+  fields: fields,
+  sort: sort
   };
 
   var log=[];
