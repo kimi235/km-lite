@@ -115,6 +115,9 @@ Burundi, Central African Republic, Comoros, Guinea, Kenya, Mali, Sao Tome and Pr
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+// ---------------------- 상수 ----------------------
+const APPNAME = "HyunKim+recap_km_lite+a5Ttg7U8dlsep";
+
 // ---------------------- 유틸 ----------------------
 function getDB(){
   try{
@@ -239,28 +242,6 @@ function tfidfSummary(text,maxSentences){
   return scored.map(function(x){return sents[x.i];}).join(' ');
 }
 
-// HDP 점수 + C1~C15 요약 카드
-function buildNoteFromItem(it){
-  var text=[it.body||'',it.title||'',it.country||'',it.source||'',it.theme||'',it.type||''].join(' ');
-  var hdp=hdpScore(text);
-  var c15=classifyC15(text,3);
-  var summary=tfidfSummary(it.body||'',3);
-  return {
-    id:it.id,
-    title:it.title||'(제목 없음)',
-    url:it.url||'',
-    created:it.created||new Date().toISOString(),
-    country:it.country||'',
-    source:it.source||'',
-    theme:it.theme||'',
-    type:it.type||'',
-    summary:summary,
-    hdp:hdp,
-    hdpLabel:hdp.label,
-    c15:c15
-  };
-}
-
 // DB 마이그레이션 (예전 구조 -> 현재 구조)
 function migrateNotesIfNeeded(){
   try{
@@ -334,30 +315,7 @@ document.getElementById('summary-modal').onclick=function(e){
   if(e.target.id==='summary-modal') this.style.display='none';
 };
 
-// ---------- ReliefWeb API 호출 ----------
-async function tryFetchBodies(baseUrl,bodies){
-  var log=[];
-  for(var i=0;i<bodies.length;i++){
-    try{
-      var res=await fetch(baseUrl,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(bodies[i])
-      });
-      if(!res.ok){
-        var txt=await res.text();
-        log.push('HTTP '+res.status+' — '+txt);
-        continue;
-      }
-      var json=await res.json();
-      return {ok:true,json:json,log:log};
-    }catch(e){
-      log.push('fetch error: '+e.message);
-    }
-  }
-  return {ok:false,log:log};
-}
-
+// ---------- ReliefWeb API 호출 (승인된 appname + ISO 날짜) ----------
 async function rwFetch(){
   var daySpan=parseInt(document.getElementById('rw-days').value||'365',10);
   var limit=parseInt(document.getElementById('rw-limit').value||'300',10);
@@ -368,40 +326,56 @@ async function rwFetch(){
   var st=document.getElementById('rw-status');
   if(st) st.textContent='요청 중...';
 
-  var url='https://api.reliefweb.int/v1/reports?appname=km-lite';
-  // 날짜: ISO 8601 전체 문자열 사용 (예: 2025-11-12T00:00:00.000Z)
-  var sinceISO=new Date(Date.now()-daySpan*86400000).toISOString();
+  // 날짜: YYYY-MM-DD 형식
+  var sinceISO=new Date(Date.now()-daySpan*86400000).toISOString().slice(0,10);
+
+  var url='https://api.reliefweb.int/v1/reports?appname='+encodeURIComponent(APPNAME);
 
   var fields={include:['id','title','url','body','body-html','country','source','theme','disaster_type','date.created']};
   var sort=["date.created:desc"];
-  var conditionsBase=[
-    {field:'date.created',value:{from:sinceISO}},
+
+  var conditions=[
+    {field:'date.created',value:{from:sinceISO}}
   ];
   if(countries.length){
-    conditionsBase.push({field:'country',value:countries});
+    conditions.push({field:'country',value:countries});
   }
 
-  // 다양한 시도(스키마 버전 차이 대응)
-  var bodies=[
-    {limit:limit,offset:0,filter:{operator:'AND',conditions:conditionsBase},fields:fields,sort:sort},
-    {limit:limit,offset:0,filter:{operator:'AND',conditions:[
-      {field:'date.created',range:{from:sinceISO}}
-    ]},fields:fields,sort:sort},
-    {limit:limit,offset:0,filter:{operator:'AND',conditions:[
-      {field:'date.created',operator:">=",value:sinceISO}
-    ]},fields:fields,sort:sort}
-  ];
+  var body={
+    limit:limit,
+    offset:0,
+    filter:{operator:'AND',conditions:conditions},
+    fields:fields,
+    sort:sort
+  };
 
-  var result=await tryFetchBodies(url,bodies);
-  if(!result.ok){
-    if(st) st.textContent='불러오기 실패';
-    out.innerHTML='<div class="small err">'+result.log.map(function(e){return '• '+e;}).join('<br/>')+'</div>';
-    console.error('ReliefWeb 요청 실패 로그:', result.log);
+  var log=[];
+  try{
+    var res=await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    });
+    if(!res.ok){
+      var txt=await res.text();
+      log.push('HTTP '+res.status+' — '+txt);
+      if(st) st.textContent='불러오기 실패('+res.status+')';
+      out.innerHTML='<div class="small err">'+log.map(function(e){return '• '+e;}).join('<br/>')+'</div>';
+      console.error('ReliefWeb 오류:',log);
+      return;
+    }
+    var json=await res.json();
+  }catch(e){
+    log.push('fetch error: '+e.message);
+    if(st) st.textContent='불러오기 실패(fetch)';
+    out.innerHTML='<div class="small err">'+log.map(function(x){return '• '+x;}).join('<br/>')+'</div>';
+    console.error('ReliefWeb 오류:',log);
     return;
   }
+
   if(st) st.textContent='완료 ('+new Date().toLocaleTimeString()+')';
 
-  var data=result.json.data||[];
+  var data=json.data||[];
   if(!data.length){
     out.innerHTML='<div class="small">조건에 맞는 문서가 없습니다.</div>';
     return;
@@ -409,17 +383,18 @@ async function rwFetch(){
 
   var items=data.map(function(r){
     var f=r.fields||{};
-    var body=(f['body-html']||f.body||'');
-    var metaTxt=[f.title||'',(f.country||[]).map(function(c){return c.name;}).join(', '),f.source||''].join(' ');
-    var hdp=hdpScore(metaTxt+' '+body);
-    var c15=classifyC15(metaTxt+' '+body,3);
+    var bodyHtml=(f['body-html']||'');
+    var plainBody=(f.body||bodyHtml.replace(/<[^>]+>/g,' '));
+    var metaTxt=[f.title||'',(f.country||[]).map(function(c){return c.name;}).join(', '), (f.source||[]).map(function(s){return s.name||s;}).join(', ')].join(' ');
+    var hdp=hdpScore(metaTxt+' '+plainBody);
+    var c15=classifyC15(metaTxt+' '+plainBody,3);
     return {
       id:r.id,title:f.title||'',url:f.url||'',created:f['date.created']||'',
       country:(f.country||[]).map(function(c){return c.name;}).join(', '),
       source:(f.source||[]).map(function(s){return s.name||s;}).join(', '),
       theme:(f.theme||[]).map(function(t){return t.name;}).join(', '),
       type:(f.disaster_type||[]).map(function(d){return d.name;}).join(', '),
-      body:body, hdp:hdp, c15:c15
+      body:plainBody, hdp:hdp, c15:c15
     };
   });
 
@@ -467,8 +442,6 @@ document.getElementById('rw-save-selected').onclick=function(){
     var title=row.children[1].textContent;
     var country=row.children[2].textContent;
     var source=row.children[3].textContent;
-    var hdpBar=row.children[4].textContent;
-    // raw item 정보는 rwFetch 안에서만 있었으므로, 다시 fetch하지 않고 최소 정보만 저장
     var note={
       id:Date.now()+'-'+idx,
       title:title,
@@ -479,8 +452,8 @@ document.getElementById('rw-save-selected').onclick=function(){
       type:'',
       summary:'',
       body:'',
-      hdp:{H:0,D:0,P:0,label:hdpBar},
-      hdpLabel:hdpBar,
+      hdp:{H:0,D:0,P:0,label:''},
+      hdpLabel:'',
       c15:[]
     };
     db.notes.push(note);
@@ -531,7 +504,8 @@ renderNotes();
 renderDashboard();
 
 document.addEventListener('DOMContentLoaded', function(){
-  var btn=document.getElementById('rw-fetch'); if(btn) btn.addEventListener('click', async function(){
+  var btn=document.getElementById('rw-fetch'); 
+  if(btn) btn.addEventListener('click', async function(){
     await rwFetch();
     renderDashboard();
   });
