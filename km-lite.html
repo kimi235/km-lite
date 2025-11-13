@@ -305,45 +305,172 @@ function summarizeText(text,maxSentences){
   return scored.map(x=>sents[x.i]).join(' ');
 }
 
-/* =============================
-    C1~C15 분류 (원본)
-============================= */
+// ---------------- C1~C15 하이브리드 분류 ----------------
+// 학술적 분류: core / related / ref 가중치 + 문장 헤더(boost)
+
 const CODES = {
-  C1:{name:'사업·프로젝트 개요 & 배경',kw:['background','context','objective','overview','rationale','fragile','fcv','situation analysis','needs assessment','배경','목표','맥락','현황']},
-  C2:{name:'이해관계자 분석',kw:['stakeholder','beneficiary','local government','ngo','civil society','private sector','partner','coordination','거버넌스','수혜자','참여기관']},
-  C3:{name:'논리모형 & 성과경로 (ToC)',kw:['theory of change','results chain','logic model','inputs','outputs','outcomes','impact pathway','성과경로','논리모형']},
-  C4:{name:'실행 및 운영관리',kw:['implementation','operations','workplan','sop','risk management','procurement','governance structure','현장 관리','운영','집행']},
-  C5:{name:'모니터링 & 평가 체계',kw:['monitoring','evaluation','m&e','indicator','baseline','midterm','final evaluation','데이터 수집','지표','평가']},
-  C6:{name:'성과 (Outputs & Outcomes)',kw:['output','deliverable','milestone','outcome','result','성과','산출']},
-  C7:{name:'영향 (Impact)',kw:['impact','long-term change','institutional change','지속적 변화','제도 변화','장기 효과']},
-  C8:{name:'지속가능성 & 확산 가능성',kw:['sustainability','scalability','institutionalization','handover','exit strategy','지속가능성','확산']},
-  C9:{name:'비용효율성 & 자원투입',kw:['cost-effectiveness','efficiency','value for money','budget','resource allocation','비용','예산','자원배분']},
-  C10:{name:'리스크 & 적응성',kw:['risk','mitigation','contingency','adaptation','pivot','conflict sensitivity','리스크','적응']},
-  C11:{name:'젠더 / 나이 / 포용성',kw:['gender','women','girl','youth','elderly','disability','inclusion','gbv','성평등','포용']},
-  C12:{name:'거버넌스 / 책임성 / 투명성',kw:['governance','accountability','transparency','complaints','grm','participatory','책임성','투명성']},
-  C13:{name:'환경 및 기후 민감성',kw:['climate','environment','adaptation','mitigation','resilience','emission','기후','환경']},
-  C14:{name:'교훈 & 확산 가능한 모형',kw:['lesson learned','lessons learned','good practice','case study','replication','scaling','교훈','우수사례']},
-  C15:{name:'한계 및 권고사항',kw:['limitation','constraint','challenge','recommendation','policy recommendation','한계','권고']}
+  C1: {
+    name: '사업·프로젝트 개요 & 배경',
+    core:    ['background','project overview','project description','context analysis','needs assessment','situation analysis','problem statement','맥락','배경','현황 분석'],
+    related: ['objective','overall goal','target population','fragile context','conflict-affected','humanitarian setting','목표','취지'],
+    ref:     ['introduction','overview','summary']
+  },
+  C2: {
+    name: '이해관계자 분석',
+    core:    ['stakeholder analysis','beneficiary mapping','power analysis','actor mapping','stakeholder mapping','수혜자 분석','이해관계자 분석'],
+    related: ['beneficiary','local government','ngo','civil society','private sector','community-based organization','partner mapping','거버넌스 구조'],
+    ref:     ['coordination','partner','participation']
+  },
+  C3: {
+    name: '논리모형 & 성과경로 (ToC)',
+    core:    ['theory of change','results chain','logic model','impact pathway','change pathway','가설적 경로','성과경로','논리모형'],
+    related: ['inputs','outputs','outcomes','impact','assumption','risk hypothesis'],
+    ref:     ['logframe','logical framework']
+  },
+  C4: {
+    name: '실행 및 운영관리',
+    core:    ['implementation plan','implementation arrangement','operational plan','field implementation','현장 실행','운영 계획'],
+    related: ['workplan','standard operating procedure','sop','procurement plan','risk management plan','roll-out','scaling up'],
+    ref:     ['operations','field activities','project management']
+  },
+  C5: {
+    name: '모니터링 & 평가 체계',
+    core:    ['monitoring and evaluation','m&e system','results framework','indicator framework','evaluation plan','baseline survey','midterm evaluation','final evaluation','성과지표 체계','모니터링 계획','평가 계획'],
+    related: ['indicator','baseline','endline','data collection','data quality','results monitoring','logframe indicator'],
+    ref:     ['reporting','progress report','review']
+  },
+  C6: {
+    name: '성과 (Outputs & Outcomes)',
+    core:    ['output achieved','outputs achieved','project outputs','immediate outcome','short-term outcome','산출 성과','직접 성과'],
+    related: ['training conducted','beneficiaries reached','coverage increased','service utilization','enrolment increased','접근성 향상'],
+    ref:     ['result','成果','성과']
+  },
+  C7: {
+    name: '영향 (Impact)',
+    core:    ['impact evaluation','long-term impact','population-level change','institutional change','system-level change','장기적 영향','제도적 변화'],
+    related: ['sustained effect','behaviour change','policy change','health outcome improvement','economic outcome','social outcome'],
+    ref:     ['impact','long-term outcome']
+  },
+  C8: {
+    name: '지속가능성 & 확산 가능성',
+    core:    ['sustainability plan','exit strategy','institutionalization','ownership','financial sustainability','지속가능성 계획','사업 종료 전략'],
+    related: ['scaling up','scalability','replication','handover to government','integration into national system'],
+    ref:     ['continuity','follow-up']
+  },
+  C9: {
+    name: '비용효율성 & 자원투입',
+    core:    ['cost-effectiveness','cost benefit','value for money','economic evaluation','비용 효과성','경제성 평가'],
+    related: ['efficiency','unit cost','budget execution','resource allocation','cost per beneficiary'],
+    ref:     ['budget','financial report']
+  },
+  C10: {
+    name: '리스크 & 적응성',
+    core:    ['risk analysis','risk assessment','risk mitigation','contingency plan','scenario planning','리스크 분석','위험 완화'],
+    related: ['adaptive management','flexible programming','context monitoring','shock-responsive','adaptive response'],
+    ref:     ['challenge','constraint']
+  },
+  C11: {
+    name: '젠더 / 나이 / 포용성',
+    core:    ['gender analysis','gender-transformative','gbv response','protection from sexual exploitation and abuse','psea','성인지 분석','젠더 분석'],
+    related: ['women and girls','men and boys','youth','elderly','persons with disabilities','inclusion','vulnerable groups','equity','사회적 약자'],
+    ref:     ['gender','inclusive','leave no one behind']
+  },
+  C12: {
+    name: '거버넌스 / 책임성 / 투명성',
+    core:    ['accountability framework','community feedback mechanism','grievance redress mechanism','complaints mechanism','social accountability','책임성 메커니즘'],
+    related: ['transparency','participatory governance','community committee','oversight committee','beneficiary feedback','aad (accountability to affected people)','aap'],
+    ref:     ['governance','good governance','anti-corruption']
+  },
+  C13: {
+    name: '환경 및 기후 민감성',
+    core:    ['climate risk assessment','climate change adaptation','climate-smart','environmental impact','environmental safeguard','환경영향 평가','기후 위험 평가'],
+    related: ['resilience to climate shocks','disaster risk reduction','drr','low-carbon','mitigation measure','ecosystem-based adaptation'],
+    ref:     ['climate','environment','emission']
+  },
+  C14: {
+    name: '교훈 & 확산 가능한 모형',
+    core:    ['lessons learned','lesson learned','key lessons','good practices','promising practices','scalable model','replicable model','교훈 및 시사점'],
+    related: ['case study','success story','innovation','pilot model','scaling strategy'],
+    ref:     ['experience','takeaways']
+  },
+  C15: {
+    name: '한계 및 권고사항',
+    core:    ['limitations','study limitations','key limitations','recommendations','policy recommendations','strategic recommendations','한계점','권고 사항'],
+    related: ['challenges','bottlenecks','constraints','areas for improvement','further work is needed'],
+    ref:     ['lesson for future','way forward']
+  }
 };
 
-function classifyC15(text,topN=3){
-  const T=(text||'').toLowerCase();
-  const ranked=[];
-  for(const k in CODES){
-    const cfg=CODES[k];
-    let s=0;
-    cfg.kw.forEach(w=>{ if(T.includes(w.toLowerCase())) s++; });
-    if(s>0) ranked.push({code:k,name:cfg.name,s});
+// 텍스트 → C1~C15 topN (하이브리드 스코어링)
+function classifyC15(text, topN){
+  topN = topN || 3;
+  if(!text) return [];
+
+  const T = text.toLowerCase();
+  const words = T.split(/[^a-z0-9가-힣]+/).filter(Boolean);
+  const wordCount = words.length || 1;
+
+  // 문장/헤더 단위 분해 (섹션 타이틀 boost용)
+  const lines = T.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+  const results = [];
+
+  for(const code in CODES){
+    const cfg = CODES[code];
+    let score = 0;
+
+    // 1) core / related / ref 가중치 스코어
+    const addHits = (termList, w) => {
+      termList.forEach(term => {
+        const t = term.toLowerCase();
+        if(!t) return;
+        // 여러 번 등장하면 그만큼 가중
+        const re = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'g');
+        const matches = T.match(re);
+        if(matches && matches.length){
+          score += w * matches.length;
+        }
+      });
+    };
+    addHits(cfg.core   || [], 3);
+    addHits(cfg.related|| [], 2);
+    addHits(cfg.ref    || [], 1);
+
+    // 2) 섹션 헤더 / 문단 제목 boost (Hybrid 요소)
+    // ex) "Recommendations:" / "한계 및 권고사항" 등 줄 맨 앞에 있을 때 추가 가중치
+    const headerBoostTerms = []
+      .concat(cfg.core || [])
+      .concat(cfg.related || []);
+    lines.forEach(line => {
+      headerBoostTerms.forEach(term => {
+        const t = term.toLowerCase();
+        if(line.startsWith(t) || line.startsWith(t.split(' ')[0])) {
+          score += 3; // 헤더 발견 시 추가 가중치
+        }
+      });
+    });
+
+    // 3) 길이 정규화 (너무 긴 문서에서 bias 줄이기)
+    const normScore = score / (1 + Math.log(wordCount));
+
+    if(normScore > 0){
+      results.push({code, name: cfg.name, s: normScore});
+    }
   }
-  ranked.sort((a,b)=>b.s-a.s);
-  return ranked.slice(0,topN);
+
+  // 점수 순으로 정렬 후 상위 N개
+  results.sort((a,b)=>b.s - a.s);
+  return results.slice(0, topN);
 }
 
 function renderC15Badges(arr){
-  if(!arr||!arr.length)
+  if(!arr || !arr.length)
     return '<span class="small" style="color:#8698b0">—</span>';
-  return arr.map(x=>`<span class="badge" title="${x.name}">${x.code}</span>`).join(' ');
+  return arr.map(x =>
+    `<span class="badge" title="${x.name}">${x.code}</span>`
+  ).join(' ');
 }
+
 
 /* =============================
    DB 저장 & 렌더 (원본 유지)
