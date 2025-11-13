@@ -338,7 +338,8 @@ async function rwFetch(){
     {field:'date.created',
      operator: "gte",
      value: sinceISO
-    };
+    }
+  ];
   if(countries.length){
     conditions.push({field:'country',value:countries});
   }
